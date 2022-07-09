@@ -1,1 +1,1 @@
-worker: cmd/bot
+worker: bin/bot
