@@ -90,7 +90,11 @@ func DescribeInstancesCmd(args map[string]string, instanceID string) ([]map[stri
 					instance["NAME"] = *t.Value
 				}
 			}
-			//instance["IP"] = *i.PublicIpAddress
+
+			instance["IP"] = ""
+			if i.PublicIpAddress != nil {
+				instance["IP"] = *i.PublicIpAddress
+			}
 			instance["ID"] = *i.InstanceId
 			instance["STATUS"] = strings.ToUpper(string(i.State.Name))
 

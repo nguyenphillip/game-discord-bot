@@ -141,22 +141,24 @@ var commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 	"start": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		optionsMap := getOptionsMapWithCreds(i)
 		optionsMapStr := convertMapValuesToString(optionsMap)
+		deferMessage(s, i, "test")
 		err := StartInstancesCmd(optionsMapStr, optionsMapStr["instance_id"])
 		if err != nil {
-			sendMessage(s, i, fmt.Sprintf("Something went wrong...\n```%s```", err))
+			deferMessageUpdate(s, i, fmt.Sprintf("Something went wrong...\n```%s```", err))
 		} else {
 
-			sendMessage(s, i, fmt.Sprintf("Starting instance `%s` in `%s`. Check `/status region: %s` to see more info.", optionsMapStr["instance_id"], optionsMapStr["region"], optionsMapStr["region"]))
+			deferMessageUpdate(s, i, fmt.Sprintf("Starting instance `%s` in `%s`. Check `/status region: %s` to see more info.", optionsMapStr["instance_id"], optionsMapStr["region"], optionsMapStr["region"]))
 		}
 	},
 	"stop": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		optionsMap := getOptionsMapWithCreds(i)
 		optionsMapStr := convertMapValuesToString(optionsMap)
+		deferMessage(s, i, "test")
 		err := StopInstancesCmd(optionsMapStr, optionsMapStr["instance_id"])
 		if err != nil {
-			sendMessage(s, i, fmt.Sprintf("Something went wrong...\n```%s```", err))
+			deferMessageUpdate(s, i, fmt.Sprintf("Something went wrong...\n```%s```", err))
 		} else {
-			sendMessage(s, i, fmt.Sprintf("Stopping instance `%s` in `%s`. Check `/status region: %s` to see more info.", optionsMapStr["instance_id"], optionsMapStr["region"], optionsMapStr["region"]))
+			deferMessageUpdate(s, i, fmt.Sprintf("Stopping instance `%s` in `%s`. Check `/status region: %s` to see more info.", optionsMapStr["instance_id"], optionsMapStr["region"], optionsMapStr["region"]))
 		}
 	},
 }
@@ -245,5 +247,20 @@ func sendMessageEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, 
 			Content: content,
 			Flags:   uint64(discordgo.MessageFlagsEphemeral),
 		},
+	})
+}
+
+func deferMessage(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: content,
+		},
+	})
+}
+
+func deferMessageUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: content,
 	})
 }
