@@ -4,10 +4,9 @@ import (
 	// "fmt"
 	"fmt"
 	"log"
-	"sort"
-	"strings"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/ecoshub/stable"
 )
 
 var regionList = [...]string{"us-east-1", "us-east-2", "us-west-1", "us-west-2", "ca-central-1"}
@@ -131,9 +130,10 @@ var commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 	"status": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		optionsMap := getOptionsMapWithCreds(i)
 		optionsMapStr := convertMapValuesToString(optionsMap)
+		deferMessageStatus(s, i)
 		instances, err := DescribeInstancesCmd(optionsMapStr, optionsMapStr["instance_id"])
 		if err != nil {
-			sendMessage(s, i, fmt.Sprintf("Something went wrong...\n```%s```", err))
+			deferMessageUpdate(s, i, fmt.Sprintf("Something went wrong...\n```%s```", err))
 		} else {
 			sendInstanceStatus(s, i, instances, optionsMap)
 		}
@@ -141,7 +141,7 @@ var commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 	"start": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		optionsMap := getOptionsMapWithCreds(i)
 		optionsMapStr := convertMapValuesToString(optionsMap)
-		deferMessage(s, i, "test")
+		deferMessage(s, i)
 		err := StartInstancesCmd(optionsMapStr, optionsMapStr["instance_id"])
 		if err != nil {
 			deferMessageUpdate(s, i, fmt.Sprintf("Something went wrong...\n```%s```", err))
@@ -153,7 +153,7 @@ var commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 	"stop": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		optionsMap := getOptionsMapWithCreds(i)
 		optionsMapStr := convertMapValuesToString(optionsMap)
-		deferMessage(s, i, "test")
+		deferMessage(s, i)
 		err := StopInstancesCmd(optionsMapStr, optionsMapStr["instance_id"])
 		if err != nil {
 			deferMessageUpdate(s, i, fmt.Sprintf("Something went wrong...\n```%s```", err))
@@ -176,7 +176,14 @@ func getOptionsMap(i *discordgo.InteractionCreate) map[string]interface{} {
 }
 
 func getOptionsMapWithCreds(i *discordgo.InteractionCreate) map[string]interface{} {
-	optionsMap := getOptionsMap(i)
+	options := i.ApplicationCommandData().Options
+	optionsMap := make(map[string]interface{})
+	optionsMap["guild_id"] = i.GuildID
+
+	for _, opt := range options {
+		optionsMap[opt.Name] = opt.StringValue()
+	}
+
 	data := getCredsFromDB(optionsMap)
 	for _, d := range data {
 		for k, v := range d {
@@ -193,42 +200,6 @@ func convertMapValuesToString(input map[string]interface{}) map[string]string {
 		output[k] = v.(string)
 	}
 	return output
-}
-
-func sendInstanceStatus(s *discordgo.Session, i *discordgo.InteractionCreate, instances []map[string]string, options map[string]interface{}) {
-
-	fieldMap := make(map[string][]string)
-	for _, instance := range instances {
-		for k, v := range instance {
-			fieldMap[k] = append(fieldMap[k], v)
-		}
-	}
-
-	var fields []*discordgo.MessageEmbedField
-	for k, v := range fieldMap {
-		fields = append(fields, &discordgo.MessageEmbedField{
-			Name:   k,
-			Value:  strings.Join(v, "\n"),
-			Inline: true,
-		})
-	}
-	sort.Slice(fields, func(a, b int) bool {
-		return fields[a].Name < fields[b].Name
-	})
-
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			// Content: content,
-			Embeds: []*discordgo.MessageEmbed{
-				{
-					Title:       "Instances Status",
-					Description: fmt.Sprintf("Region: `%s`", options["region"]),
-					Fields:      fields,
-				},
-			},
-		},
-	})
 }
 
 func sendMessage(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
@@ -250,12 +221,9 @@ func sendMessageEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	})
 }
 
-func deferMessage(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+func deferMessage(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: content,
-		},
 	})
 }
 
@@ -263,4 +231,29 @@ func deferMessageUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, co
 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Content: content,
 	})
+}
+
+func deferMessageStatus(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds: []*discordgo.MessageEmbed{
+				{
+					Title: "Instances Status",
+				},
+			},
+		},
+	})
+}
+
+func sendInstanceStatus(s *discordgo.Session, i *discordgo.InteractionCreate, instances []map[string]interface{}, options map[string]interface{}) {
+
+	table, err := stable.ToTable(instances)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	table.SetCaption(fmt.Sprintf("Status - %s", options["region"]))
+
+	deferMessageUpdate(s, i, fmt.Sprintf("```\n%s```", table.String()))
 }

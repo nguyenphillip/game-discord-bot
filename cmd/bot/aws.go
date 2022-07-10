@@ -4,30 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/smithy-go"
 )
 
-var mapEnvToKey = map[string]string{"AWS_REGION": "region", "AWS_ACCESS_KEY_ID": "aws_access_key_id", "AWS_SECRET_ACCESS_KEY": "aws_secret_access_key"}
-
-func setAWSEnvVars(args map[string]string) {
-	for k, v := range mapEnvToKey {
-		os.Setenv(k, args[v])
-	}
-}
-
-func unsetAWSEnvVars() {
-	for k := range mapEnvToKey {
-		os.Unsetenv(k)
-	}
-}
-
-func createEC2Client() *ec2.Client {
-	cfg, err := config.LoadDefaultConfig(context.TODO())
+func createEC2Client(args map[string]string) *ec2.Client {
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion(args["region"]),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(args["aws_access_key_id"], args["aws_secret_access_key"], "")))
 	if err != nil {
 		panic("configuration error, " + err.Error())
 	}
@@ -55,11 +43,9 @@ func GetInstances(c context.Context, api EC2DescribeInstancesAPI, input *ec2.Des
 	return api.DescribeInstances(c, input)
 }
 
-func DescribeInstancesCmd(args map[string]string, instanceID string) ([]map[string]string, error) {
-	setAWSEnvVars(args)
-	defer unsetAWSEnvVars()
+func DescribeInstancesCmd(args map[string]string, instanceID string) ([]map[string]interface{}, error) {
 
-	client := createEC2Client()
+	client := createEC2Client(args)
 
 	input := &ec2.DescribeInstancesInput{}
 	if instanceID != "" {
@@ -77,14 +63,14 @@ func DescribeInstancesCmd(args map[string]string, instanceID string) ([]map[stri
 		return nil, err
 	}
 
-	var returnInstances []map[string]string
+	var returnInstances []map[string]interface{}
 
 	for _, r := range result.Reservations {
 
 		// fmt.Println("Reservation ID: " + *r.ReservationId)
 		// fmt.Println("Instance IDs:")
 		for _, i := range r.Instances {
-			instance := make(map[string]string)
+			instance := make(map[string]interface{})
 			for _, t := range i.Tags {
 				if *t.Key == "Name" {
 					instance["NAME"] = *t.Value
@@ -144,10 +130,7 @@ func StartInstancesCmd(args map[string]string, instanceID string) error {
 		return errors.New("error instance ID must not be empty")
 	}
 
-	setAWSEnvVars(args)
-	defer unsetAWSEnvVars()
-
-	client := createEC2Client()
+	client := createEC2Client(args)
 
 	t := true
 	input := &ec2.StartInstancesInput{
@@ -204,10 +187,7 @@ func StopInstancesCmd(args map[string]string, instanceID string) error {
 		return errors.New("error instance ID must not be empty")
 	}
 
-	setAWSEnvVars(args)
-	defer unsetAWSEnvVars()
-
-	client := createEC2Client()
+	client := createEC2Client(args)
 	t := true
 	input := &ec2.StopInstancesInput{
 		InstanceIds: []string{

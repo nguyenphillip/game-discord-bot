@@ -103,7 +103,6 @@ func insertDB(args map[string]interface{}) error {
 	if err != nil {
 		log.Println(err)
 	}
-	fmt.Println("New record ID is:", id)
 
 	return err
 }
@@ -146,7 +145,14 @@ func saveCredsToDB(args map[string]interface{}) error {
 }
 
 func getCredsFromDB(args map[string]interface{}) []map[string]interface{} {
-	data := queryDB(args)
+	queryMap := make(map[string]interface{})
+	for k, v := range args {
+		if k == "guild_id" || k == "region" {
+			queryMap[k] = v
+		}
+	}
+	data := queryDB(queryMap)
+
 	returnData := make([]map[string]interface{}, len(data))
 
 	for _, d := range data {
