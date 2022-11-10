@@ -1,0 +1,5 @@
+[phases.build]
+cmds = ['go build -o ./bin ./cmd/...']
+
+[start]
+cmd = './bin/bot'
