@@ -216,7 +216,7 @@ func sendMessageEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: content,
-			Flags:   uint64(discordgo.MessageFlagsEphemeral),
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 }
@@ -229,7 +229,7 @@ func deferMessage(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func deferMessageUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		Content: content,
+		Content: &content,
 	})
 }
 
