@@ -11,6 +11,40 @@ import (
 
 var regionList = [...]string{"us-east-1", "us-east-2", "us-west-1", "us-west-2", "ca-central-1"}
 
+// Region helpers
+var regionOption = &discordgo.ApplicationCommandOption{
+	Name:        "region",
+	Description: "AWS Region",
+	Type:        discordgo.ApplicationCommandOptionString,
+	Required:    true,
+	Choices:     getRegionChoices(),
+}
+
+func getRegionChoices() []*discordgo.ApplicationCommandOptionChoice {
+	var choices []*discordgo.ApplicationCommandOptionChoice
+
+	for _, r := range regionList {
+		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+			Name:  r,
+			Value: r,
+		})
+	}
+	return choices
+}
+
+func getRegionComponentOptions() []discordgo.SelectMenuOption {
+	var menuOptions []discordgo.SelectMenuOption
+
+	for _, r := range regionList {
+		menuOptions = append(menuOptions, discordgo.SelectMenuOption{
+			Label: r,
+			Value: r,
+			// Description: r,
+		})
+	}
+	return menuOptions
+}
+
 // Commands, Options, Choices
 var commands = []*discordgo.ApplicationCommand{
 
@@ -85,26 +119,6 @@ var commands = []*discordgo.ApplicationCommand{
 	},
 }
 
-var regionOption = &discordgo.ApplicationCommandOption{
-	Name:        "region",
-	Description: "AWS Region",
-	Type:        discordgo.ApplicationCommandOptionString,
-	Required:    true,
-	Choices:     getRegionChoices(),
-}
-
-func getRegionChoices() []*discordgo.ApplicationCommandOptionChoice {
-	var choices []*discordgo.ApplicationCommandOptionChoice
-
-	for _, r := range regionList {
-		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  r,
-			Value: r,
-		})
-	}
-	return choices
-}
-
 // Command Handlers
 var commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 	"help": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -163,6 +177,24 @@ var commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 	},
 }
 
+// Component Handlers
+var componentHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
+	"refresh_status": func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		optionsMap := getOptionsMapWithCredsFromComponent(i)
+		optionsMapStr := convertMapValuesToString(optionsMap)
+		deferMessageStatus(s, i)
+		instances, err := DescribeInstancesCmd(optionsMapStr, optionsMapStr["instance_id"])
+
+		if err != nil {
+			deferMessageUpdate(s, i, fmt.Sprintf("Something went wrong...\n```%s```", err))
+		} else {
+			s.ChannelMessageDelete(i.Message.ChannelID, i.Message.ID)
+			sendInstanceStatus(s, i, instances, optionsMap)
+		}
+
+	},
+}
+
 // Helper functions
 func getOptionsMap(i *discordgo.InteractionCreate) map[string]interface{} {
 	options := i.ApplicationCommandData().Options
@@ -183,6 +215,21 @@ func getOptionsMapWithCreds(i *discordgo.InteractionCreate) map[string]interface
 	for _, opt := range options {
 		optionsMap[opt.Name] = opt.StringValue()
 	}
+
+	data := getCredsFromDB(optionsMap)
+	for _, d := range data {
+		for k, v := range d {
+			optionsMap[k] = v
+		}
+	}
+	return optionsMap
+}
+
+func getOptionsMapWithCredsFromComponent(i *discordgo.InteractionCreate) map[string]interface{} {
+	options := i.MessageComponentData().Values
+	optionsMap := make(map[string]interface{})
+	optionsMap["guild_id"] = i.GuildID
+	optionsMap["region"] = options[0]
 
 	data := getCredsFromDB(optionsMap)
 	for _, d := range data {
@@ -216,7 +263,7 @@ func sendMessageEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: content,
-			Flags:   uint64(discordgo.MessageFlagsEphemeral),
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 }
@@ -229,7 +276,7 @@ func deferMessage(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func deferMessageUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		Content: content,
+		Content: &content,
 	})
 }
 
@@ -255,5 +302,20 @@ func sendInstanceStatus(s *discordgo.Session, i *discordgo.InteractionCreate, in
 	}
 	table.SetCaption(fmt.Sprintf("Status - %s", options["region"]))
 
-	deferMessageUpdate(s, i, fmt.Sprintf("```\n%s```", table.String()))
+	content := fmt.Sprintf("```\n%s```", table.String())
+
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
+		Components: &[]discordgo.MessageComponent{
+			discordgo.ActionsRow{
+				Components: []discordgo.MessageComponent{
+					discordgo.SelectMenu{
+						CustomID:    "refresh_status",
+						Placeholder: "Select Region to Refresh Status",
+						Options:     getRegionComponentOptions(),
+					},
+				},
+			},
+		},
+	})
 }
